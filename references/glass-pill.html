@@ -1,0 +1,94 @@
+<!doctype html>
+<!-- Glass Motion: liquid-glass pill reference (refraction + chromatic fringe + rim). Open in a browser to preview.
+     Each pill holds a copy of the background, offset so it lines up with the real one, and runs the SVG filter on
+     that copy. The displacement map is drawn per pill size on a canvas (deterministic, so it renders the same every frame). -->
+<html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;background:#000}
+  #stage{position:relative;width:1080px;height:1920px;overflow:hidden;background:#000;font-family:"Helvetica Neue","Inter Display",Inter,Arial,sans-serif}
+  /* dark world backdrop: gold under-glow + real content behind the pills */
+  .bg{position:absolute;inset:0}
+  .bg .glow{position:absolute;left:-20%;right:-20%;bottom:-25%;height:65%;
+    background:radial-gradient(ellipse at 50% 85%,#E0A000 0%,#8A5A00 30%,#2A1A00 55%,transparent 72%);filter:blur(30px)}
+  .bg .arc{position:absolute;width:2600px;height:2600px;border-radius:50%;left:-300px;top:820px;
+    box-shadow:0 -2px 0 rgba(255,200,40,.55),0 -18px 60px rgba(255,180,0,.18)}
+  .bg .shot{position:absolute;left:120px;top:640px;width:330px;border-radius:6px}
+  .pillrow{position:absolute;top:900px;left:0;display:flex;gap:44px;padding-left:80px;will-change:transform}
+  .pill{position:relative;height:108px;border-radius:54px;overflow:hidden;flex:none}
+  .pill .refract{position:absolute;filter:url(#glass)}           /* the background copy, bent by the lens */
+  .pill .tint{position:absolute;inset:0;border-radius:inherit;
+    background:linear-gradient(180deg,rgba(255,255,255,.20) 0%,rgba(255,255,255,.05) 45%,rgba(255,255,255,.03) 100%),rgba(20,20,20,.25);
+    box-shadow:inset 0 0 0 2.5px rgba(255,255,255,.85),      /* crisp rim */
+               inset 3px 4px 6px rgba(255,255,255,.55),       /* top-left hot edge */
+               inset -3px -4px 6px rgba(255,255,255,.35),     /* bottom-right hot edge */
+               inset 0 10px 18px -8px rgba(0,0,0,.6)}          /* thickness under the top rim */
+  .pill .label{position:relative;white-space:nowrap;line-height:108px;padding:0 54px;color:#fff;font-weight:500;font-size:74px;
+    letter-spacing:-.04em;text-shadow:0 0 12px rgba(255,255,255,.35)}
+  .pillwrap{position:relative;filter:drop-shadow(0 0 10px rgba(255,255,255,.35))}  /* outer glow */
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <filter id="glass" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+    <feImage id="dmap" result="map" preserveAspectRatio="none"/>
+    <!-- three slightly different bends, one per colour channel = chromatic fringe at the caps -->
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="46" xChannelSelector="R" yChannelSelector="G" result="dr"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="54" xChannelSelector="R" yChannelSelector="G" result="dg"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="62" xChannelSelector="R" yChannelSelector="G" result="db"/>
+    <feColorMatrix in="dr" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r"/>
+    <feColorMatrix in="dg" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="g"/>
+    <feColorMatrix in="db" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="b"/>
+    <feBlend in="r" in2="g" mode="screen" result="rg"/>
+    <feBlend in="rg" in2="b" mode="screen"/>
+  </filter>
+</svg>
+
+<div id="stage">
+  <div class="bg" id="bg">
+    <div class="glow"></div><div class="arc"></div>
+    <!-- swap for a real creative/screenshot in a job -->
+    <svg class="shot" viewBox="0 0 330 560"><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a6b2a"/><stop offset=".5" stop-color="#e8d9b0"/><stop offset="1" stop-color="#c0392b"/></linearGradient></defs>
+      <rect width="330" height="560" fill="url(#g1)"/><text x="20" y="80" font-size="44" font-weight="800" fill="#fff" font-family="Arial">FEEL STRONG.</text>
+      <text x="20" y="130" font-size="44" font-weight="800" fill="#111" font-family="Arial">LIVE BETTER.</text></svg>
+  </div>
+  <div class="pillrow" id="row"></div>
+</div>
+
+<script>
+// Capsule lens map: R/G = 128 ± inward displacement, strongest at the rim, zero in the flat middle.
+function lensMap(w,h,band){
+  const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');const im=x.createImageData(w,h);
+  const r=h/2;
+  for(let j=0;j<h;j++)for(let i=0;i<w;i++){
+    // nearest point on the capsule's centre segment
+    const cx=Math.min(Math.max(i,r),w-r),cy=r;let dx=i-cx,dy=j-cy;const dist=Math.hypot(dx,dy)||1;
+    const edge=r-dist;                       // px inside the rim
+    let k=edge<band?Math.pow(1-Math.max(edge,0)/band,2.2):0;
+    dx/=dist;dy/=dist;                       // outward normal; sample inward => content bends toward the rim
+    const p=(j*w+i)*4;im.data[p]=128+dx*127*k;im.data[p+1]=128+dy*127*k;im.data[p+2]=128;im.data[p+3]=255;
+  }
+  x.putImageData(im,0,0);return c.toDataURL();
+}
+const bgNode=document.getElementById('bg'),row=document.getElementById('row');
+function makePill(text){
+  const wrap=document.createElement('div');wrap.className='pillwrap';
+  const p=document.createElement('div');p.className='pill';
+  const ref=bgNode.cloneNode(true);ref.removeAttribute('id');ref.className='bg refract';ref.style.width='1080px';ref.style.height='1920px';
+  const tint=document.createElement('div');tint.className='tint';
+  const lab=document.createElement('div');lab.className='label';lab.textContent=text;
+  p.append(ref,tint,lab);wrap.append(p);row.append(wrap);return {wrap,p,ref};
+}
+const pills=['Ads','Funnels','Follow-up'].map(makePill);
+// one map sized to the widest pill is enough for a reference; per-pill filters in a real build
+const w=Math.max(...pills.map(o=>o.p.offsetWidth));
+document.getElementById('dmap').setAttribute('href',lensMap(w,108,38));
+document.getElementById('dmap').setAttribute('width',w);document.getElementById('dmap').setAttribute('height',108);
+// keep each background copy aligned with the real background as the row moves
+function sync(){const s=document.getElementById('stage').getBoundingClientRect();
+  pills.forEach(o=>{const b=o.p.getBoundingClientRect();o.ref.style.left=(s.left-b.left)+'px';o.ref.style.top=(s.top-b.top)+'px';});}
+// preview drift: expo-out slide, the way the reel parks a row (seek with ?t=0..1)
+const t=Math.min(1,parseFloat(new URLSearchParams(location.search).get('t')??'1'));
+const e=t===1?1:1-Math.pow(2,-10*t);
+row.style.transform=`translateX(${-260*e}px)`;sync();
+</script>
+</body></html>
